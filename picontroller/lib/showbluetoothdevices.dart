@@ -52,36 +52,38 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
   void connectToDevice(BluetoothDevice device) async {
     try {
       // Show connecting dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade800,
-              borderRadius: BorderRadius.circular(16),
+showDialog(
+  context: context,
+  barrierDismissible: false,
+  builder: (context) => Center(
+    child: Material(
+      color: Colors.grey.shade800,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade600),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Connecting...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
+            const SizedBox(height: 16),
+            const Text(
+              "Connecting...",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          ],
         ),
-      );
+      ),
+    ),
+  ),
+);
+
 
       await device.connect();
       List<BluetoothService> services = await device.discoverServices();
