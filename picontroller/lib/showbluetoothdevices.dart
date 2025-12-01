@@ -1,4 +1,4 @@
-import 'package:ble_controller/bluetoothcontrollers.dart';
+import 'package:ble_controller/choosecontroller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -51,6 +51,38 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
 
   void connectToDevice(BluetoothDevice device) async {
     try {
+      // Show connecting dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade800,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade600),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Connecting...',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
       await device.connect();
       List<BluetoothService> services = await device.discoverServices();
       BluetoothCharacteristic? characteristic;
@@ -64,11 +96,15 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
         }
       }
       
+      // Close connecting dialog
+      Navigator.pop(context);
+      
       if (characteristic != null) {
+        // Navigate to controller selection page
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ControllerPage(
+            builder: (_) => ControllerSelectionPage(
               device: device,
               characteristic: characteristic!,
             ),
@@ -78,6 +114,10 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
         showErrorSnackbar("No writable characteristic found.");
       }
     } catch (e) {
+      // Close connecting dialog if it's open
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
       showErrorSnackbar("Failed to connect: $e");
     }
   }
