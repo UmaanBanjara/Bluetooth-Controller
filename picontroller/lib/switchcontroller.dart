@@ -39,7 +39,7 @@ class _SwitchControllerPageState extends State<SwitchControllerPage> {
     'btn4': TextEditingController(),
   };
 
-  String? _activeSendingKey;
+  bool _isSending = false;
   Map<String, bool> _isActive = {
     'btn1': false,
     'btn2': false,
@@ -104,39 +104,51 @@ class _SwitchControllerPageState extends State<SwitchControllerPage> {
     }
   }
 
+  String _getCombinedCommand() {
+    // Combine all active button commands
+    List<String> activeCommands = [];
+    _isActive.forEach((key, isActive) {
+      if (isActive) {
+        activeCommands.add(_onCommandControllers[key]!.text);
+      }
+    });
+    
+    // If no buttons active, return stop command
+    if (activeCommands.isEmpty) {
+      return 'S';
+    }
+    
+    // Join all active commands
+    return activeCommands.join('');
+  }
+
   void toggleButton(String key) async {
     if (_isEditMode || !mounted) return;
     
     setState(() {
       // Toggle the button state
       _isActive[key] = !_isActive[key]!;
-      
-      if (_isActive[key]!) {
-        // Button turned ON - start continuous sending
-        // Turn off any other active button
-        _isActive.forEach((btnKey, isActive) {
-          if (btnKey != key && isActive) {
-            _isActive[btnKey] = false;
-          }
-        });
-        _activeSendingKey = key;
-        continuouslySendCommand(key);
-      } else {
-        // Button turned OFF - stop continuous sending and send OFF signal once
-        if (_activeSendingKey == key) {
-          _activeSendingKey = null;
-        }
-        // Send the OFF command once
-        final offCommand = _offCommandControllers[key]!.text;
-        sendData(offCommand);
-      }
     });
+    
+    // Check if any button is active
+    bool anyActive = _isActive.values.any((active) => active);
+    
+    if (anyActive) {
+      // At least one button is active - start/continue continuous sending
+      if (!_isSending) {
+        _isSending = true;
+        continuouslySendCommand();
+      }
+    } else {
+      // No buttons active - stop sending and send stop command
+      _isSending = false;
+      await sendData('S');
+    }
   }
 
-  void continuouslySendCommand(String key) async {
-    final command = _onCommandControllers[key]!.text;
-    
-    while (_activeSendingKey == key && _isActive[key]! && mounted) {
+  void continuouslySendCommand() async {
+    while (_isSending && mounted) {
+      String command = _getCombinedCommand();
       await sendData(command);
       await Future.delayed(const Duration(milliseconds: 1));
     }
@@ -403,7 +415,7 @@ class _SwitchControllerPageState extends State<SwitchControllerPage> {
                     setState(() {
                       _isEditMode = !_isEditMode;
                       if (!_isEditMode) {
-                        _activeSendingKey = null;
+                        _isSending = false;
                       }
                     });
                   },
@@ -447,7 +459,7 @@ class _SwitchControllerPageState extends State<SwitchControllerPage> {
       DeviceOrientation.landscapeRight,
     ]);
     
-    _activeSendingKey = null;
+    _isSending = false;
     for (var controller in _onCommandControllers.values) {
       controller.dispose();
     }
@@ -628,7 +640,7 @@ class _EditButtonDialogState extends State<_EditButtonDialog> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'ON sends continuously, OFF sends once',
+                        'Multiple buttons can be ON. Commands combine automatically.',
                         style: TextStyle(
                           color: Colors.blue.shade200,
                           fontSize: 12,
