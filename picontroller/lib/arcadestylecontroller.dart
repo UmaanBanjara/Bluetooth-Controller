@@ -1,5 +1,6 @@
 // ==================== ARCADE STYLE CONTROLLER ====================
 import 'package:ble_controller/editpage.dart';
+import 'package:ble_controller/orientation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -49,6 +50,7 @@ class _ArcadeControllerPageState extends State<ArcadeControllerPage> {
     super.initState();
     loadButtonCommands();
     _listenToConnectionState();
+    forceLandscape();
   }
 
   void _listenToConnectionState() {
