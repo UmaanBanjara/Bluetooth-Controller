@@ -1,7 +1,10 @@
 import 'package:ble_controller/choosecontroller.dart';
+import 'package:ble_controller/orientation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class BluetoothScanPage extends StatefulWidget {
   const BluetoothScanPage({super.key});
@@ -13,11 +16,45 @@ class BluetoothScanPage extends StatefulWidget {
 class _BluetoothScanPageState extends State<BluetoothScanPage> {
   List<ScanResult> _scanResults = [];
   bool _isScanning = false;
+  List<Map<String, dynamic>> _recentDevices = [];
 
   @override
   void initState() {
     super.initState();
     requestPermissions();
+    loadRecentDevices();
+    forceLandscape();
+  }
+
+  Future<void> loadRecentDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final devicesJson = prefs.getString('recent_devices') ?? '[]';
+    final List<dynamic> devices = json.decode(devicesJson);
+    setState(() {
+      _recentDevices = devices.cast<Map<String, dynamic>>();
+    });
+  }
+
+  Future<void> saveRecentDevice(String deviceId, String deviceName) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Remove if already exists
+    _recentDevices.removeWhere((d) => d['id'] == deviceId);
+    
+    // Add to beginning
+    _recentDevices.insert(0, {
+      'id': deviceId,
+      'name': deviceName,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    
+    // Keep only last 5 devices
+    if (_recentDevices.length > 5) {
+      _recentDevices = _recentDevices.sublist(0, 5);
+    }
+    
+    await prefs.setString('recent_devices', json.encode(_recentDevices));
+    setState(() {});
   }
 
   Future<void> requestPermissions() async {
@@ -52,40 +89,44 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
   void connectToDevice(BluetoothDevice device) async {
     try {
       // Show connecting dialog
-showDialog(
-  context: context,
-  barrierDismissible: false,
-  builder: (context) => Center(
-    child: Material(
-      color: Colors.grey.shade800,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "Connecting...",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Material(
+            color: Colors.grey.shade800,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Connecting...",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                ],
               ),
-            )
-          ],
+            ),
+          ),
         ),
-      ),
-    ),
-  ),
-);
-
+      );
 
       await device.connect();
+      
+      // Save to recent devices
+      final deviceName = device.name.isNotEmpty ? device.name : "Unknown Device";
+      await saveRecentDevice(device.id.toString(), deviceName);
+      
       List<BluetoothService> services = await device.discoverServices();
       BluetoothCharacteristic? characteristic;
       
@@ -124,6 +165,81 @@ showDialog(
     }
   }
 
+  void connectToRecentDevice(String deviceId) async {
+    try {
+      // Start scanning to find the device
+      setState(() {
+        _isScanning = true;
+      });
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Material(
+            color: Colors.grey.shade800,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Searching for device...",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+      
+      BluetoothDevice? foundDevice;
+      await for (var results in FlutterBluePlus.scanResults) {
+        for (var result in results) {
+          if (result.device.id.toString() == deviceId) {
+            foundDevice = result.device;
+            await FlutterBluePlus.stopScan();
+            break;
+          }
+        }
+        if (foundDevice != null) break;
+      }
+
+      setState(() {
+        _isScanning = false;
+      });
+
+      if (foundDevice != null) {
+        Navigator.pop(context); // Close searching dialog
+        connectToDevice(foundDevice);
+      } else {
+        Navigator.pop(context);
+        showErrorSnackbar("Device not found. Make sure it's powered on and nearby.");
+      }
+    } catch (e) {
+      setState(() {
+        _isScanning = false;
+      });
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      showErrorSnackbar("Failed to find device: $e");
+    }
+  }
+
   void showErrorSnackbar(String message) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -143,7 +259,7 @@ showDialog(
         ),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 2), //changed duration
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
       ),
@@ -168,6 +284,97 @@ showDialog(
       ),
       body: CustomScrollView(
         slivers: [
+          // Recent Devices Section
+          if (_recentDevices.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.history_rounded,
+                          color: Colors.orange.shade600,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Recent Devices",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade300,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 80,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recentDevices.length,
+                        itemBuilder: (context, index) {
+                          final device = _recentDevices[index];
+                          return Container(
+                            width: 140,
+                            margin: const EdgeInsets.only(right: 12),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.grey.shade800,
+                                  Colors.grey.shade900,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.shade600.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: () => connectToRecentDevice(device['id']),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.bluetooth_connected_rounded,
+                                      color: Colors.orange.shade600,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      device['name'],
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // Header Section
           SliverToBoxAdapter(
             child: Container(
