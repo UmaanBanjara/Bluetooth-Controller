@@ -3,6 +3,7 @@ import 'package:ble_controller/arcadestylecontroller.dart';
 import 'package:ble_controller/bluetoothcontrollers.dart';
 import 'package:ble_controller/dpadstylecontroller.dart';
 import 'package:ble_controller/joystickstylecontroller.dart';
+import 'package:ble_controller/orientation.dart';
 import 'package:ble_controller/switchcontroller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,6 +31,7 @@ class _ControllerSelectionPageState extends State<ControllerSelectionPage> {
   void initState() {
     super.initState();
     _loadSelectedController();
+    forceLandscape();
   }
 
   Future<void> _loadSelectedController() async {
@@ -95,7 +97,7 @@ class _ControllerSelectionPageState extends State<ControllerSelectionPage> {
         );
     }
 
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => controllerPage),
     ).then((_) {
